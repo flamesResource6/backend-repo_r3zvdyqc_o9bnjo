@@ -1,8 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 
-app = FastAPI()
+from database import create_document
+from schemas import Inquiry
+
+app = FastAPI(title="Event Agency API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,13 +17,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class InquiryRequest(Inquiry):
+    pass
+
+class InquiryResponse(BaseModel):
+    status: str
+    id: Optional[str] = None
+
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"message": "Event Agency Backend is running"}
 
-@app.get("/api/hello")
-def hello():
-    return {"message": "Hello from the backend API!"}
+@app.get("/api/services")
+def list_services():
+    # Static list of services offered
+    return {
+        "services": [
+            {"id": "hospitality", "title": "Hospitality", "description": "Concierge, guest relations, and VIP handling"},
+            {"id": "catering", "title": "Catering", "description": "Custom menus, live counters, and premium bar"},
+            {"id": "decoration", "title": "Decoration", "description": "Themes, florals, lighting, and stage design"},
+            {"id": "fireworks", "title": "Fireworks", "description": "Licensed pyrotechnics and special effects"},
+            {"id": "dj", "title": "DJ & Entertainment", "description": "Top DJs, live bands, and sound systems"}
+        ]
+    }
+
+@app.post("/api/inquiry", response_model=InquiryResponse)
+async def create_inquiry(payload: InquiryRequest):
+    try:
+        new_id = create_document("inquiry", payload)
+        return {"status": "ok", "id": new_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
 def test_database():
@@ -33,7 +62,6 @@ def test_database():
     }
     
     try:
-        # Try to import database module
         from database import db
         
         if db is not None:
@@ -42,10 +70,9 @@ def test_database():
             response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
             response["connection_status"] = "Connected"
             
-            # Try to list collections to verify connectivity
             try:
                 collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
+                response["collections"] = collections[:10]
                 response["database"] = "✅ Connected & Working"
             except Exception as e:
                 response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
@@ -57,13 +84,11 @@ def test_database():
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:50]}"
     
-    # Check environment variables
     import os
     response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
     
     return response
-
 
 if __name__ == "__main__":
     import uvicorn
